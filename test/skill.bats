@@ -121,8 +121,8 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../SKILL.md"
   grep -q 'synced_folder' "$SKILL_FILE"
 }
 
-@test "SKILL.md states skill Vagrantfile is example/reference only" {
-  grep -qi 'reference example\|example only' "$SKILL_FILE"
+@test "SKILL.md requires agent to customize provisioning for the project" {
+  grep -qi 'MUST customize\|customize.*provision\|inspect.*project' "$SKILL_FILE"
 }
 
 @test "SKILL.md says Vagrantfile should be committed" {

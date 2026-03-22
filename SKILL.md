@@ -64,58 +64,117 @@ See [references/platform-setup.md](references/platform-setup.md) for detailed pr
 
 ### Step 1: Create a Vagrantfile in the User's Project
 
-**IMPORTANT:** The Vagrantfile in this skill directory is a reference example only. You must create a Vagrantfile **in the user's working directory** so they can reuse it. The `.vagrant/` directory (VM state) must be gitignored.
+If the user's project does not already have a `Vagrantfile`, you MUST create a real, working one in their project directory. This is not a template or example — it must work end-to-end with `vagrant up`.
 
-If the user's project does not already have a `Vagrantfile`, create one:
+**Requirements for the Vagrantfile you create:**
+- Base box: `bento/ubuntu-24.04`
+- Sync the project root into the VM: `config.vm.synced_folder ".", "/project", type: "rsync"`
+- Include all three providers (Parallels, libvirt, VirtualBox) so it works on any platform
+- Provision with the actual tools the project needs (inspect the project first — look for `go.mod`, `package.json`, `requirements.txt`, `Makefile`, `Dockerfile`, etc.)
+- Use `set -euo pipefail` in provisioning scripts
+- Make provisioning idempotent
+
+Here is the **base Vagrantfile** — you MUST customize the provisioning section based on what the project actually uses:
 
 ```ruby
 # -*- mode: ruby -*-
-# Vagrantfile — disposable dev/test VM (created by vagrant skill)
+# Vagrantfile — disposable dev/test VM
+
+VM_CPUS   = Integer(ENV["VM_CPUS"]   || 4)
+VM_MEMORY = Integer(ENV["VM_MEMORY"] || 4096)
 
 Vagrant.configure("2") do |config|
   config.vm.box = "bento/ubuntu-24.04"
+  config.vm.box_check_update = false
   config.vm.hostname = "dev"
+  config.vm.boot_timeout = 300
+  config.ssh.forward_agent = true
 
-  # ─── Sync project source into the VM ──────────────────────────────────────
+  # ─── Sync project into VM at /project ─────────────────────────────────────
   config.vm.synced_folder ".", "/project", type: "rsync",
-    rsync__exclude: [".git/", "node_modules/", "vendor/", ".vagrant/"]
+    rsync__exclude: [
+      ".git/", "node_modules/", "vendor/", ".vagrant/",
+      "bin/", "dist/", "build/", ".next/",
+    ]
 
-  # ─── Provider: Parallels (Mac Apple Silicon) ──────────────────────────────
+  # ─── Provider: Parallels (Mac Apple Silicon — recommended) ────────────────
   config.vm.provider "parallels" do |prl|
-    prl.cpus   = Integer(ENV["VM_CPUS"]   || 4)
-    prl.memory = Integer(ENV["VM_MEMORY"] || 4096)
+    prl.cpus   = VM_CPUS
+    prl.memory = VM_MEMORY
     prl.update_guest_tools = true
   end
 
-  # ─── Provider: libvirt (Linux — nested KVM) ───────────────────────────────
+  # ─── Provider: libvirt (Linux — preferred, nested KVM) ────────────────────
   config.vm.provider "libvirt" do |lv|
-    lv.cpus   = Integer(ENV["VM_CPUS"]   || 4)
-    lv.memory = Integer(ENV["VM_MEMORY"] || 4096)
+    lv.cpus   = VM_CPUS
+    lv.memory = VM_MEMORY
     lv.cpu_mode = "host-passthrough"
     lv.nested = true
   end
 
-  # ─── Provider: VirtualBox ─────────────────────────────────────────────────
+  # ─── Provider: VirtualBox (cross-platform fallback) ───────────────────────
   config.vm.provider "virtualbox" do |vb|
-    vb.cpus   = Integer(ENV["VM_CPUS"]   || 4)
-    vb.memory = Integer(ENV["VM_MEMORY"] || 4096)
+    vb.cpus   = VM_CPUS
+    vb.memory = VM_MEMORY
     vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]
   end
 
-  # ─── Provision ────────────────────────────────────────────────────────────
+  # ─── Provision: install project dependencies ──────────────────────────────
+  # CUSTOMIZE THIS for the project. Inspect go.mod, package.json,
+  # requirements.txt, Dockerfile, Makefile, etc. and install what's needed.
   config.vm.provision "shell", privileged: true, inline: <<-SHELL
     set -euo pipefail
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq build-essential curl git jq docker.io
+    apt-get install -y -qq build-essential curl git jq ca-certificates gnupg
+
+    # ── Docker ────────────────────────────────────────────────────────────
+    if ! command -v docker &>/dev/null; then
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      echo "deb [arch=$(dpkg --print-architecture) \
+        signed-by=/etc/apt/keyrings/docker.asc] \
+        https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+        | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      apt-get update -qq
+      apt-get install -y -qq docker-ce docker-ce-cli containerd.io
+    fi
     systemctl enable --now docker
     usermod -aG docker vagrant
+
+    # ── Add project-specific tooling below ────────────────────────────────
+    # Examples (uncomment / add what the project needs):
+    #
+    # Go:
+    #   GO_VERSION="1.24.3"
+    #   curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-$(dpkg --print-architecture).tar.gz" \
+    #     | tar -C /usr/local -xz
+    #   echo 'export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"' > /etc/profile.d/go.sh
+    #
+    # Node.js:
+    #   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    #   apt-get install -y -qq nodejs
+    #
+    # Python:
+    #   apt-get install -y -qq python3 python3-pip python3-venv
+
     echo "VM ready — project synced at /project"
   SHELL
 end
 ```
 
-Adapt the provisioning inline script to the user's needs (e.g., add Go, Python, Node, or other tooling). The example above is minimal — add what the project requires.
+**You MUST customize the provisioning section.** Read the project to determine what it needs:
+- `go.mod` → install Go
+- `package.json` → install Node.js
+- `requirements.txt` / `pyproject.toml` → install Python
+- `Dockerfile` → Docker is already included above
+- Network testing → add `iptables dnsmasq dnsutils iproute2 net-tools`
+- KVM/microVM testing → add `qemu-kvm libvirt-daemon-system`
+
+Uncomment the relevant blocks and add any other tooling. Do NOT leave placeholder comments in the final Vagrantfile — produce a clean, working file.
 
 Then **add `.vagrant/` to the user's `.gitignore`** if not already present:
 
@@ -123,7 +182,9 @@ Then **add `.vagrant/` to the user's `.gitignore`** if not already present:
 grep -qxF '.vagrant/' .gitignore 2>/dev/null || echo '.vagrant/' >> .gitignore
 ```
 
-The Vagrantfile itself **should be committed** — it's reusable project config.
+The Vagrantfile itself **should be committed** — it's reusable project infrastructure.
+
+If the user already has a `Vagrantfile`, use it as-is unless they ask to modify it.
 
 ### Step 2: Start the VM
 
