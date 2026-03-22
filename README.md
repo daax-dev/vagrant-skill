@@ -1,12 +1,14 @@
 # vagrant-skill
 
-**Disposable VMs for safe testing — Claude Code + OpenClaw skill**
+**Disposable VMs for safe testing — an [Agent Skills](https://agentskills.io) standard skill**
 
 | | |
 |---|---|
 | **Repo** | [daax-dev/vagrant-skill](https://github.com/daax-dev/vagrant-skill) |
 | **Stack** | Vagrant, Shell, Ubuntu 24.04 |
-| **Skill** | [Agent Skills](https://agentskills.io) standard (Claude Code + OpenClaw) |
+| **Skill** | [Agent Skills](https://agentskills.io) standard |
+| **Compatible** | Claude Code, Claude.ai, OpenClaw, Cursor, Gemini CLI, and [30+ agents](https://agentskills.io) |
+| **License** | Apache 2.0 |
 
 ## What It Does
 
@@ -17,97 +19,7 @@ Provides disposable, fully-provisioned Ubuntu 24.04 VMs for safe experimentation
 - **Nested KVM** — hardware virtualization passthrough (Linux with libvirt)
 - **Configurable** — sync any project, adjust CPU/RAM/Go version via env vars
 - **Destroy and recreate** — VMs are ephemeral, nothing persists unless you want it
-- **Dual skill** — works as both a Claude Code skill and an OpenClaw skill
 - **Cross-platform** — tested on Mac (Parallels), Linux (libvirt), with VirtualBox as fallback
-
----
-
-## Platform Setup
-
-### Mac (Apple Silicon — M1/M2/M3/M4) — Recommended: Parallels
-
-VirtualBox on Apple Silicon is experimental and unreliable. **Use Parallels.**
-
-```bash
-# 1. Install Parallels Desktop (requires license)
-#    Download from https://www.parallels.com/products/desktop/
-
-# 2. Install Vagrant
-brew install --cask vagrant
-
-# 3. Install the Parallels provider plugin
-vagrant plugin install vagrant-parallels
-
-# 4. Clone and start
-git clone git@github.com:daax-dev/vagrant-skill.git
-cd vagrant-skill
-vagrant up --provider=parallels
-```
-
-**Verified working:** macOS 26.3, Apple Silicon (arm64), Parallels Desktop, Vagrant 2.4.9, bento/ubuntu-24.04 arm64 box. Setup provisions Go 1.24.3 (arm64), Docker, mage. 11/11 checks pass.
-
-**KVM note:** Nested KVM is not available on Mac (no `/dev/kvm`). The VM still provides Docker, Go, mage, and full sudo. If you need nested KVM (e.g., for Firecracker microVM testing), use a Linux host.
-
-### Mac (Intel) — VirtualBox
-
-```bash
-# 1. Install VirtualBox
-brew install --cask virtualbox
-
-# 2. Install Vagrant
-brew install --cask vagrant
-
-# 3. Clone and start
-git clone git@github.com:daax-dev/vagrant-skill.git
-cd vagrant-skill
-vagrant up --provider=virtualbox
-```
-
-### Linux — Recommended: libvirt/KVM
-
-This is the most capable setup — includes nested KVM for microVM testing.
-
-```bash
-# 1. Install KVM + libvirt
-sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
-
-# 2. Install Vagrant + libvirt plugin
-sudo apt-get install -y vagrant
-vagrant plugin install vagrant-libvirt
-
-# 3. Clone and start
-git clone git@github.com:daax-dev/vagrant-skill.git
-cd vagrant-skill
-vagrant up --provider=libvirt
-```
-
-**Nested KVM** is automatically enabled (`cpu_mode: host-passthrough`). Verify on your host:
-```bash
-# Host must have KVM
-test -e /dev/kvm && echo "KVM OK"
-
-# After vagrant up, verify nested KVM inside VM
-vagrant ssh -c "test -e /dev/kvm && echo 'Nested KVM OK'"
-```
-
-### Windows (WSL2) — VirtualBox
-
-```bash
-# 1. Install VirtualBox on Windows (not inside WSL2)
-#    Download from https://www.virtualbox.org/wiki/Downloads
-
-# 2. Inside WSL2, install Vagrant
-sudo apt-get install -y vagrant
-
-# 3. Tell Vagrant to use the Windows VirtualBox
-export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
-export PATH="$PATH:/mnt/c/Program Files/Oracle/VirtualBox"
-
-# 4. Clone and start
-git clone git@github.com:daax-dev/vagrant-skill.git
-cd vagrant-skill
-vagrant up --provider=virtualbox
-```
 
 ---
 
@@ -149,6 +61,10 @@ PROJECT_SRC=~/myapp VM_CPUS=8 VM_MEMORY=8192 vagrant up
 
 ## Install as a Skill
 
+> **Note:** The skill name is `vagrant`. When installing, clone into a directory
+> named `vagrant` (not `vagrant-skill`) so the directory name matches the skill
+> name per the [Agent Skills spec](https://agentskills.io/specification).
+
 ### Claude Code
 
 ```bash
@@ -161,18 +77,95 @@ git clone git@github.com:daax-dev/vagrant-skill.git .claude/skills/vagrant
 
 Then use `/vagrant` in Claude Code.
 
-### OpenClaw
+### ClawHub
 
 ```bash
-# Manual install
-git clone git@github.com:daax-dev/vagrant-skill.git ~/.openclaw/skills/vagrant
+npx clawhub@latest install vagrant
+```
+
+### Other Agent Skills-Compatible Agents
+
+Any agent that supports the [Agent Skills standard](https://agentskills.io) can use this skill. Install into the agent's skill directory with the name `vagrant`:
+
+```bash
+git clone git@github.com:daax-dev/vagrant-skill.git <agent-skills-dir>/vagrant
+```
+
+---
+
+## Platform Setup
+
+### Mac (Apple Silicon — M1/M2/M3/M4) — Recommended: Parallels
+
+VirtualBox on Apple Silicon is experimental and unreliable. **Use Parallels.**
+
+```bash
+# 1. Install Parallels Desktop (requires license)
+#    Download from https://www.parallels.com/products/desktop/
+
+# 2. Install Vagrant
+brew install --cask vagrant
+
+# 3. Install the Parallels provider plugin
+vagrant plugin install vagrant-parallels
+
+# 4. Clone and start
+git clone git@github.com:daax-dev/vagrant-skill.git vagrant
+cd vagrant
+vagrant up --provider=parallels
+```
+
+**Verified working:** macOS 26.3, Apple Silicon (arm64), Parallels Desktop, Vagrant 2.4.9, bento/ubuntu-24.04 arm64 box. Setup provisions Go 1.24.3 (arm64), Docker, mage. 11/11 checks pass.
+
+**KVM note:** Nested KVM is not available on Mac (no `/dev/kvm`). The VM still provides Docker, Go, mage, and full sudo. If you need nested KVM (e.g., for Firecracker microVM testing), use a Linux host.
+
+### Mac (Intel) — VirtualBox
+
+```bash
+brew install --cask virtualbox
+brew install --cask vagrant
+git clone git@github.com:daax-dev/vagrant-skill.git vagrant
+cd vagrant
+vagrant up --provider=virtualbox
+```
+
+### Linux — Recommended: libvirt/KVM
+
+This is the most capable setup — includes nested KVM for microVM testing.
+
+```bash
+sudo apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils
+sudo apt-get install -y vagrant
+vagrant plugin install vagrant-libvirt
+git clone git@github.com:daax-dev/vagrant-skill.git vagrant
+cd vagrant
+vagrant up --provider=libvirt
+```
+
+**Nested KVM** is automatically enabled (`cpu_mode: host-passthrough`). Verify:
+```bash
+test -e /dev/kvm && echo "KVM OK"
+vagrant ssh -c "test -e /dev/kvm && echo 'Nested KVM OK'"
+```
+
+### Windows (WSL2) — VirtualBox
+
+```bash
+# Install VirtualBox on Windows (not inside WSL2)
+# Inside WSL2:
+sudo apt-get install -y vagrant
+export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
+export PATH="$PATH:/mnt/c/Program Files/Oracle/VirtualBox"
+git clone git@github.com:daax-dev/vagrant-skill.git vagrant
+cd vagrant
+vagrant up --provider=virtualbox
 ```
 
 ---
 
 ## Using as a Consumer
 
-Projects that depend on vagrant-skill for dev environments (e.g., nanofuse):
+Projects that depend on vagrant-skill for dev environments:
 
 ```bash
 # From vagrant-skill directory, point to your project
@@ -206,7 +199,7 @@ vagrant ssh -c "sudo /project/scripts/my-setup.sh"
 # Lint (shellcheck + ruby syntax)
 make lint
 
-# Unit tests (44 bats tests)
+# Unit tests (58 bats tests)
 make test
 
 # Full integration (spins up VM, provisions, verifies, destroys)
@@ -221,13 +214,16 @@ make test-all
 ```
 vagrant-skill/
 ├── Vagrantfile                    # Multi-provider (Parallels, libvirt, VirtualBox)
-├── SKILL.md                       # Agent Skills standard (Claude Code + OpenClaw)
-├── .claude/skills/vagrant/        # Claude Code skill copy
+├── SKILL.md                       # Agent Skills standard skill definition
+├── .claude/skills/vagrant/        # Claude Code skill symlink
 ├── scripts/
 │   ├── setup.sh                   # Provisioner: system deps, Docker, Go, mage, KVM
 │   └── verify.sh                  # Validation suite (11 checks)
-├── docs/                          # Reference documentation
-├── test/                          # bats-core tests (44 tests)
+├── references/                    # Progressive disclosure (Level 3)
+│   ├── platform-setup.md          # Detailed provider installation
+│   └── vm-contents.md             # VM filesystem and software reference
+├── docs/                          # Project documentation
+├── test/                          # bats-core tests (58 tests)
 ├── Makefile                       # lint, test, test-integration, up, destroy
 ├── README.md
 ├── CLAUDE.md

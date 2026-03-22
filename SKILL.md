@@ -1,8 +1,23 @@
 ---
 name: vagrant
-description: Disposable VMs for safe testing — full sudo, nested KVM, destroy and recreate. Use when you need a sandbox to build, test, or break things without affecting the host.
-version: 0.1.0
+description: >-
+  Disposable VMs for safe testing — full sudo, Docker, Go, nested KVM, destroy
+  and recreate. Use when you need a sandbox to build, test, or break things
+  without affecting the host. Use when the user says "spin up a VM", "test in
+  isolation", "run with sudo", "try something dangerous", "set up a dev
+  environment", "I need Docker", "test firewall rules", "clean environment",
+  or needs root access, network testing, or safe experimentation.
+license: Apache-2.0
+compatibility: >-
+  Requires vagrant binary and at least one provider: Parallels (Mac Apple
+  Silicon), libvirt (Linux), or VirtualBox (cross-platform). Designed for
+  terminal-based AI agents and interactive developer use.
+allowed-tools: "Bash(vagrant:*) Bash(make:*) Read"
 metadata:
+  author: daax-dev
+  version: "0.1.0"
+  category: infrastructure
+  tags: [vm, sandbox, testing, docker, devops, isolation, kvm]
   openclaw:
     requires:
       bins:
@@ -10,6 +25,7 @@ metadata:
       anyBins:
         - VBoxManage
         - virsh
+        - prlctl
 ---
 
 ## User Input
@@ -37,32 +53,25 @@ AI agents and developers need a safe place to:
 
 ### Prerequisites
 
-Before using this workflow, verify one of these providers is available:
+Before using this workflow, verify a provider is available:
 
 ```bash
-# Linux (preferred — nested KVM)
-command -v vagrant && vagrant plugin list | grep libvirt
+# Check Vagrant is installed
+command -v vagrant
 
-# Mac / Windows WSL2
-command -v vagrant && command -v VBoxManage
+# Check for a provider (any one is sufficient)
+command -v prlctl        # Parallels (Mac Apple Silicon — recommended)
+vagrant plugin list | grep libvirt  # libvirt (Linux — nested KVM)
+command -v VBoxManage    # VirtualBox (fallback)
 ```
 
-### Location
-
-The Vagrant environment lives at:
-```
-vagrant-skill/
-  Vagrantfile       # Multi-provider (libvirt + VirtualBox)
-  scripts/
-    setup.sh        # Provisions: system deps, Docker, Go, mage, KVM tools
-    verify.sh       # Validation suite
-```
+See [references/platform-setup.md](references/platform-setup.md) for detailed provider installation.
 
 ---
 
 ## Core Workflow
 
-### 1. Provision the VM (first time or clean slate)
+### Step 1: Provision the VM
 
 ```bash
 cd vagrant-skill
@@ -75,16 +84,15 @@ PROJECT_SRC=/path/to/your/project vagrant up
 ```
 
 This gives you a VM with:
-- Ubuntu 24.04
-- Go + mage build system
-- Docker
-- Network tools (iptables, dnsmasq, iproute2)
+- Ubuntu 24.04 with full sudo
+- Go 1.24.3 + mage build system
+- Docker (daemon running)
+- Network tools (iptables, dnsmasq, iproute2, dig)
 - KVM tools (if nested KVM available on host)
-- Full sudo
 
-### 2. Run Commands Inside the VM
+### Step 2: Run Commands Inside the VM
 
-**All commands use `vagrant ssh -c` from the host.** You never need to `vagrant ssh` interactively.
+**All commands use `vagrant ssh -c` from the host.** No interactive SSH needed.
 
 ```bash
 # Run any command with sudo
@@ -106,7 +114,7 @@ vagrant ssh -c "sudo systemctl start dnsmasq"
 vagrant ssh -c "sudo /vagrant-scripts/scripts/verify.sh"
 ```
 
-### 3. Iterate on Code Changes
+### Step 3: Iterate on Code Changes
 
 When you modify source on the host:
 
@@ -118,7 +126,7 @@ vagrant ssh -c "cd /project && make test"        # test
 
 This is fast (~10s for rsync + rebuild) vs. full reprovision.
 
-### 4. Tear Down
+### Step 4: Tear Down
 
 ```bash
 vagrant destroy -f    # destroys VM completely, clean slate
@@ -184,14 +192,7 @@ Example:
 PROJECT_SRC=~/myapp VM_CPUS=8 VM_MEMORY=8192 vagrant up
 ```
 
-## What's Inside the VM
-
-| Path | Contents |
-|------|----------|
-| `/project` | Source code (rsynced from host, if PROJECT_SRC set) |
-| `/vagrant-scripts` | Setup and verify scripts |
-| `/usr/local/go/bin/go` | Go toolchain |
-| `/usr/local/bin/mage` | Mage build tool |
+See [references/vm-contents.md](references/vm-contents.md) for full details on VM filesystem layout and installed software.
 
 ## Safety Guarantees
 
@@ -202,18 +203,76 @@ PROJECT_SRC=~/myapp VM_CPUS=8 VM_MEMORY=8192 vagrant up
 - **Source is rsynced** — VM gets a copy; your host repo is never modified by the VM
 - **No persistent state** — destroying the VM removes all data
 
+## Examples
+
+### Example 1: Test a Go project in a clean environment
+
+User says: "I need to test this Go project in a clean environment"
+
+Actions:
+1. `PROJECT_SRC=~/myproject vagrant up`
+2. `vagrant ssh -c "cd /project && go test ./..."`
+3. `vagrant destroy -f`
+
+Result: Tests run in isolated Ubuntu 24.04 VM, no host contamination.
+
+### Example 2: Safe firewall rule testing
+
+User says: "I need to test some iptables rules without breaking my network"
+
+Actions:
+1. `vagrant up`
+2. `vagrant ssh -c "sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT"`
+3. `vagrant ssh -c "sudo iptables -L -n -v"`
+4. `vagrant destroy -f`
+
+Result: Firewall rules tested safely inside VM, host network untouched.
+
+### Example 3: Docker build and test
+
+User says: "Build and test this Docker image"
+
+Actions:
+1. `PROJECT_SRC=~/myproject vagrant up`
+2. `vagrant ssh -c "cd /project && docker build -t myapp ."`
+3. `vagrant ssh -c "docker run --rm myapp test"`
+4. `vagrant destroy -f`
+
+Result: Docker image built and tested inside VM with its own Docker daemon.
+
 ## Troubleshooting
 
-```bash
-# VM won't boot
-vagrant up --debug 2>&1 | tail -50
+### VM Won't Boot
 
-# Re-sync source without full reprovision
-vagrant rsync
+**Error:** `vagrant up` hangs or times out
+**Cause:** Provider not installed or configured correctly
+**Solution:**
+1. Check provider is installed: `vagrant plugin list`
+2. Debug boot: `vagrant up --debug 2>&1 | tail -50`
+3. Try explicit provider: `vagrant up --provider=virtualbox`
 
-# Check what provider is being used
-vagrant status
+### Source Not Synced
 
-# KVM not available inside VM
-# Ensure host has: cpu_mode = "host-passthrough" (libvirt) or nested-hw-virt (VBox)
-```
+**Error:** `/project` directory is empty or missing inside VM
+**Cause:** `PROJECT_SRC` not set or rsync failed
+**Solution:**
+1. Set explicitly: `PROJECT_SRC=~/myproject vagrant up`
+2. Re-sync without reprovision: `vagrant rsync`
+
+### Provider Mismatch
+
+**Error:** `vagrant up` uses wrong provider
+**Cause:** Multiple providers installed, Vagrant auto-selects
+**Solution:**
+1. Check what's running: `vagrant status`
+2. Force provider: `vagrant up --provider=parallels`
+
+### KVM Not Available Inside VM
+
+**Error:** `/dev/kvm` missing inside the VM
+**Cause:** Host doesn't support nested virtualization or provider not configured
+**Solution:**
+1. Ensure host has KVM: `test -e /dev/kvm` on host
+2. Use libvirt provider with `cpu_mode = "host-passthrough"` (automatic in this Vagrantfile)
+3. VirtualBox: nested-hw-virt is enabled but may not work on all CPUs
+4. Mac: nested KVM is not available — use a Linux host for KVM workloads
