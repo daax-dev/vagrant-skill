@@ -1,0 +1,6 @@
+# Vagrant machine state
+.vagrant/
+
+# OS
+.DS_Store
+Thumbs.db
