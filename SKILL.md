@@ -12,7 +12,7 @@ compatibility: >-
   Requires vagrant binary and at least one provider: Parallels (Mac Apple
   Silicon), libvirt (Linux), or VirtualBox (cross-platform). Designed for
   terminal-based AI agents and interactive developer use.
-allowed-tools: "Bash(vagrant:*) Bash(make:*) Read"
+allowed-tools: "Bash(vagrant:*) Bash(make:*) Read Write"
 metadata:
   author: daax-dev
   version: "0.1.0"
@@ -40,15 +40,6 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 This skill provides a **disposable VM sandbox** for safe development and testing. All privileged operations (sudo, iptables, Docker, systemd, KVM) happen inside the VM — the host is never modified.
 
-### Why This Exists
-
-AI agents and developers need a safe place to:
-- Run commands with full sudo without risking the host
-- Test firewall rules, network configs, systemd services
-- Build and test with Docker, Go, mage
-- Use nested KVM for microVM or hypervisor testing
-- Break things and start fresh in seconds
-
 **You (the agent) should NEVER need host-level sudo.** Instead, use this Vagrant workflow to get a fully provisioned, disposable VM where you have unrestricted root access.
 
 ### Prerequisites
@@ -71,26 +62,78 @@ See [references/platform-setup.md](references/platform-setup.md) for detailed pr
 
 ## Core Workflow
 
-### Step 1: Provision the VM
+### Step 1: Create a Vagrantfile in the User's Project
 
-```bash
-cd vagrant-skill
+**IMPORTANT:** The Vagrantfile in this skill directory is a reference example only. You must create a Vagrantfile **in the user's working directory** so they can reuse it. The `.vagrant/` directory (VM state) must be gitignored.
 
-# Basic — no project sync
-vagrant up
+If the user's project does not already have a `Vagrantfile`, create one:
 
-# With a project synced into the VM at /project
-PROJECT_SRC=/path/to/your/project vagrant up
+```ruby
+# -*- mode: ruby -*-
+# Vagrantfile — disposable dev/test VM (created by vagrant skill)
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "bento/ubuntu-24.04"
+  config.vm.hostname = "dev"
+
+  # ─── Sync project source into the VM ──────────────────────────────────────
+  config.vm.synced_folder ".", "/project", type: "rsync",
+    rsync__exclude: [".git/", "node_modules/", "vendor/", ".vagrant/"]
+
+  # ─── Provider: Parallels (Mac Apple Silicon) ──────────────────────────────
+  config.vm.provider "parallels" do |prl|
+    prl.cpus   = Integer(ENV["VM_CPUS"]   || 4)
+    prl.memory = Integer(ENV["VM_MEMORY"] || 4096)
+    prl.update_guest_tools = true
+  end
+
+  # ─── Provider: libvirt (Linux — nested KVM) ───────────────────────────────
+  config.vm.provider "libvirt" do |lv|
+    lv.cpus   = Integer(ENV["VM_CPUS"]   || 4)
+    lv.memory = Integer(ENV["VM_MEMORY"] || 4096)
+    lv.cpu_mode = "host-passthrough"
+    lv.nested = true
+  end
+
+  # ─── Provider: VirtualBox ─────────────────────────────────────────────────
+  config.vm.provider "virtualbox" do |vb|
+    vb.cpus   = Integer(ENV["VM_CPUS"]   || 4)
+    vb.memory = Integer(ENV["VM_MEMORY"] || 4096)
+    vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]
+  end
+
+  # ─── Provision ────────────────────────────────────────────────────────────
+  config.vm.provision "shell", privileged: true, inline: <<-SHELL
+    set -euo pipefail
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+    apt-get install -y -qq build-essential curl git jq docker.io
+    systemctl enable --now docker
+    usermod -aG docker vagrant
+    echo "VM ready — project synced at /project"
+  SHELL
+end
 ```
 
-This gives you a VM with:
-- Ubuntu 24.04 with full sudo
-- Go 1.24.3 + mage build system
-- Docker (daemon running)
-- Network tools (iptables, dnsmasq, iproute2, dig)
-- KVM tools (if nested KVM available on host)
+Adapt the provisioning inline script to the user's needs (e.g., add Go, Python, Node, or other tooling). The example above is minimal — add what the project requires.
 
-### Step 2: Run Commands Inside the VM
+Then **add `.vagrant/` to the user's `.gitignore`** if not already present:
+
+```bash
+grep -qxF '.vagrant/' .gitignore 2>/dev/null || echo '.vagrant/' >> .gitignore
+```
+
+The Vagrantfile itself **should be committed** — it's reusable project config.
+
+### Step 2: Start the VM
+
+```bash
+vagrant up
+```
+
+This boots the VM with the user's project synced at `/project` inside the VM.
+
+### Step 3: Run Commands Inside the VM
 
 **All commands use `vagrant ssh -c` from the host.** No interactive SSH needed.
 
@@ -98,7 +141,7 @@ This gives you a VM with:
 # Run any command with sudo
 vagrant ssh -c "sudo apt-get install -y some-package"
 
-# Build a project
+# Build the project
 vagrant ssh -c "cd /project && make build"
 vagrant ssh -c "cd /project && go test ./..."
 
@@ -108,13 +151,9 @@ vagrant ssh -c "docker run --rm myimage"
 
 # Network/firewall testing
 vagrant ssh -c "sudo iptables -L -n"
-vagrant ssh -c "sudo systemctl start dnsmasq"
-
-# Run the verification suite
-vagrant ssh -c "sudo /vagrant-scripts/scripts/verify.sh"
 ```
 
-### Step 3: Iterate on Code Changes
+### Step 4: Iterate on Code Changes
 
 When you modify source on the host:
 
@@ -124,9 +163,7 @@ vagrant ssh -c "cd /project && make build"       # rebuild
 vagrant ssh -c "cd /project && make test"        # test
 ```
 
-This is fast (~10s for rsync + rebuild) vs. full reprovision.
-
-### Step 4: Tear Down
+### Step 5: Tear Down
 
 ```bash
 vagrant destroy -f    # destroys VM completely, clean slate
@@ -139,12 +176,9 @@ vagrant destroy -f    # destroys VM completely, clean slate
 ### Pattern: Build-Test-Fix Loop
 
 ```bash
-# 1. Make code changes on host
-# 2. Sync and rebuild
 vagrant rsync && vagrant ssh -c "cd /project && make build"
-# 3. Run tests
 vagrant ssh -c "cd /project && make test"
-# 4. If tests fail, read output, fix code, repeat from step 1
+# If tests fail, fix code on host, repeat
 ```
 
 ### Pattern: Docker-in-VM
@@ -157,39 +191,30 @@ vagrant ssh -c "docker run --rm test"
 ### Pattern: Network/Firewall Testing
 
 ```bash
-# Apply firewall rules
 vagrant ssh -c "sudo iptables -A FORWARD -s 172.16.0.0/24 -j DROP"
 vagrant ssh -c "sudo iptables -L -n -v"
-
-# DNS filtering
-vagrant ssh -c "sudo systemctl start dnsmasq"
-vagrant ssh -c "dig example.com @127.0.0.1"
 ```
 
 ### Pattern: Full Reprovision (Nuclear Option)
 
-When things are broken beyond repair:
 ```bash
-vagrant destroy -f && vagrant up    # fresh VM from scratch
+vagrant destroy -f && vagrant up
 ```
 
 ---
 
 ## Configuration
 
-Environment variables to customize the VM:
+Environment variables to customize the VM (set before `vagrant up`):
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PROJECT_SRC` | auto-detect | Host directory to sync into VM at `/project` |
 | `VM_CPUS` | 4 | Number of vCPUs |
 | `VM_MEMORY` | 4096 | RAM in MB |
-| `VM_NAME` | vagrant-skill-dev | VM hostname |
-| `GO_VERSION` | 1.24.3 | Go version to install |
 
 Example:
 ```bash
-PROJECT_SRC=~/myapp VM_CPUS=8 VM_MEMORY=8192 vagrant up
+VM_CPUS=8 VM_MEMORY=8192 vagrant up
 ```
 
 See [references/vm-contents.md](references/vm-contents.md) for full details on VM filesystem layout and installed software.
@@ -202,6 +227,7 @@ See [references/vm-contents.md](references/vm-contents.md) for full details on V
 - **Isolated networking** — VM has its own network stack
 - **Source is rsynced** — VM gets a copy; your host repo is never modified by the VM
 - **No persistent state** — destroying the VM removes all data
+- **Vagrantfile is committed** — reusable across sessions; `.vagrant/` is gitignored
 
 ## Examples
 
@@ -210,21 +236,24 @@ See [references/vm-contents.md](references/vm-contents.md) for full details on V
 User says: "I need to test this Go project in a clean environment"
 
 Actions:
-1. `PROJECT_SRC=~/myproject vagrant up`
-2. `vagrant ssh -c "cd /project && go test ./..."`
-3. `vagrant destroy -f`
+1. Check if `Vagrantfile` exists in project root — if not, create one with Go provisioning
+2. Add `.vagrant/` to `.gitignore`
+3. `vagrant up`
+4. `vagrant ssh -c "cd /project && go test ./..."`
+5. `vagrant destroy -f`
 
-Result: Tests run in isolated Ubuntu 24.04 VM, no host contamination.
+Result: Tests run in isolated Ubuntu 24.04 VM, no host contamination. Vagrantfile stays for next time.
 
 ### Example 2: Safe firewall rule testing
 
 User says: "I need to test some iptables rules without breaking my network"
 
 Actions:
-1. `vagrant up`
-2. `vagrant ssh -c "sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT"`
-3. `vagrant ssh -c "sudo iptables -L -n -v"`
-4. `vagrant destroy -f`
+1. Create Vagrantfile with network tools provisioned
+2. `vagrant up`
+3. `vagrant ssh -c "sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT"`
+4. `vagrant ssh -c "sudo iptables -L -n -v"`
+5. `vagrant destroy -f`
 
 Result: Firewall rules tested safely inside VM, host network untouched.
 
@@ -233,10 +262,11 @@ Result: Firewall rules tested safely inside VM, host network untouched.
 User says: "Build and test this Docker image"
 
 Actions:
-1. `PROJECT_SRC=~/myproject vagrant up`
-2. `vagrant ssh -c "cd /project && docker build -t myapp ."`
-3. `vagrant ssh -c "docker run --rm myapp test"`
-4. `vagrant destroy -f`
+1. Create Vagrantfile with Docker provisioned (docker.io or Docker CE)
+2. `vagrant up`
+3. `vagrant ssh -c "cd /project && docker build -t myapp ."`
+4. `vagrant ssh -c "docker run --rm myapp test"`
+5. `vagrant destroy -f`
 
 Result: Docker image built and tested inside VM with its own Docker daemon.
 
@@ -254,10 +284,10 @@ Result: Docker image built and tested inside VM with its own Docker daemon.
 ### Source Not Synced
 
 **Error:** `/project` directory is empty or missing inside VM
-**Cause:** `PROJECT_SRC` not set or rsync failed
+**Cause:** rsync failed or synced_folder misconfigured
 **Solution:**
-1. Set explicitly: `PROJECT_SRC=~/myproject vagrant up`
-2. Re-sync without reprovision: `vagrant rsync`
+1. Re-sync: `vagrant rsync`
+2. Check Vagrantfile has `synced_folder ".", "/project", type: "rsync"`
 
 ### Provider Mismatch
 
@@ -273,6 +303,5 @@ Result: Docker image built and tested inside VM with its own Docker daemon.
 **Cause:** Host doesn't support nested virtualization or provider not configured
 **Solution:**
 1. Ensure host has KVM: `test -e /dev/kvm` on host
-2. Use libvirt provider with `cpu_mode = "host-passthrough"` (automatic in this Vagrantfile)
-3. VirtualBox: nested-hw-virt is enabled but may not work on all CPUs
-4. Mac: nested KVM is not available — use a Linux host for KVM workloads
+2. Use libvirt provider with `cpu_mode = "host-passthrough"`
+3. Mac: nested KVM is not available — use a Linux host for KVM workloads

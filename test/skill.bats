@@ -104,6 +104,31 @@ SKILL_FILE="$BATS_TEST_DIRNAME/../SKILL.md"
   grep -q "references/" "$SKILL_FILE"
 }
 
+# ─── Workflow design ─────────────────────────────────────────────────────────
+
+@test "SKILL.md instructs agent to create Vagrantfile in user's directory" {
+  grep -q "Create a Vagrantfile" "$SKILL_FILE" || \
+  grep -q "create a Vagrantfile" "$SKILL_FILE" || \
+  grep -q "Create.*Vagrantfile.*user" "$SKILL_FILE"
+}
+
+@test "SKILL.md instructs agent to gitignore .vagrant/" {
+  grep -q '\.vagrant/' "$SKILL_FILE"
+  grep -q 'gitignore\|\.gitignore' "$SKILL_FILE"
+}
+
+@test "SKILL.md includes example Vagrantfile with synced_folder" {
+  grep -q 'synced_folder' "$SKILL_FILE"
+}
+
+@test "SKILL.md states skill Vagrantfile is example/reference only" {
+  grep -qi 'reference example\|example only' "$SKILL_FILE"
+}
+
+@test "SKILL.md says Vagrantfile should be committed" {
+  grep -qi 'should be committed\|Vagrantfile.*committed' "$SKILL_FILE"
+}
+
 # ─── Progressive disclosure ──────────────────────────────────────────────────
 
 @test "SKILL.md is under 500 lines" {
