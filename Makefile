@@ -1,4 +1,4 @@
-.PHONY: lint test test-integration test-all up destroy clean
+.PHONY: lint test test-unit test-integration test-all up destroy clean
 
 # ─── Lint ────────────────────────────────────────────────────────────────────
 lint:
@@ -8,22 +8,22 @@ lint:
 	ruby -c Vagrantfile
 	@echo "▶ All lint passed"
 
-# ─── Unit Tests (bats-core) ─────────────────────────────────────────────────
-test:
+# ─── Unit Tests (structure/format only, no VM) ──────────────────────────────
+test-unit:
 	@command -v bats >/dev/null 2>&1 || { echo "Install bats-core: brew install bats-core (Mac) or apt-get install bats (Linux)"; exit 1; }
-	bats test/
+	bats test/scripts.bats test/skill.bats test/vagrantfile.bats
 
-# ─── Integration Tests (requires Vagrant + provider) ────────────────────────
+# ─── Integration Tests (boots a real VM, requires Vagrant + provider) ───────
 test-integration:
-	@echo "▶ Starting VM..."
-	vagrant up
-	@echo "▶ Running verification inside VM..."
-	vagrant ssh -c "sudo /vagrant-scripts/scripts/verify.sh"
-	@echo "▶ Integration tests passed"
-	vagrant destroy -f
+	@command -v bats >/dev/null 2>&1 || { echo "Install bats-core: brew install bats-core (Mac) or apt-get install bats (Linux)"; exit 1; }
+	@command -v vagrant >/dev/null 2>&1 || { echo "Install vagrant: brew install --cask vagrant"; exit 1; }
+	bats test/integration.bats
+
+# ─── All Unit Tests (default) ───────────────────────────────────────────────
+test: test-unit
 
 # ─── All Tests ───────────────────────────────────────────────────────────────
-test-all: lint test test-integration
+test-all: lint test-unit test-integration
 
 # ─── Dev shortcuts ───────────────────────────────────────────────────────────
 up:
