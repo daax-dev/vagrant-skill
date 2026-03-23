@@ -292,44 +292,50 @@ See [references/vm-contents.md](references/vm-contents.md) for full details on V
 
 ## Examples
 
-### Example 1: Test a Go project in a clean environment
+### Example 1: Test iptables firewall rules without touching host network
 
-User says: "I need to test this Go project in a clean environment"
-
-Actions:
-1. Check if `Vagrantfile` exists in project root — if not, create one with Go provisioning
-2. Add `.vagrant/` to `.gitignore`
-3. `vagrant up`
-4. `vagrant ssh -c "cd /project && go test ./..."`
-5. `vagrant destroy -f`
-
-Result: Tests run in isolated Ubuntu 24.04 VM, no host contamination. Vagrantfile stays for next time.
-
-### Example 2: Safe firewall rule testing
-
-User says: "I need to test some iptables rules without breaking my network"
+User says: "I need to test some firewall rules before deploying to production"
 
 Actions:
-1. Create Vagrantfile with network tools provisioned
+1. Create Vagrantfile with `iptables dnsmasq dnsutils iproute2 net-tools` provisioned
 2. `vagrant up`
-3. `vagrant ssh -c "sudo iptables -A INPUT -p tcp --dport 8080 -j ACCEPT"`
-4. `vagrant ssh -c "sudo iptables -L -n -v"`
-5. `vagrant destroy -f`
+3. `vagrant ssh -c "sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT"`
+4. `vagrant ssh -c "sudo iptables -A INPUT -p tcp --dport 0:442 -j DROP"`
+5. `vagrant ssh -c "sudo iptables -L -n -v"` — verify rules look right
+6. `vagrant ssh -c "sudo iptables-save > /project/firewall.rules"` — export if good
+7. `vagrant rsync` to get rules file back, or `vagrant destroy -f` to scrap
 
-Result: Firewall rules tested safely inside VM, host network untouched.
+Result: Firewall rules iterated safely. Host network never touched. Rules exportable.
 
-### Example 3: Docker build and test
+### Example 2: Test systemd service configuration
 
-User says: "Build and test this Docker image"
+User says: "I need to test this systemd unit file before deploying"
 
 Actions:
-1. Create Vagrantfile with Docker provisioned (docker.io or Docker CE)
+1. Create Vagrantfile with the project synced
 2. `vagrant up`
-3. `vagrant ssh -c "cd /project && docker build -t myapp ."`
-4. `vagrant ssh -c "docker run --rm myapp test"`
-5. `vagrant destroy -f`
+3. `vagrant ssh -c "sudo cp /project/myservice.service /etc/systemd/system/"`
+4. `vagrant ssh -c "sudo systemctl daemon-reload && sudo systemctl start myservice"`
+5. `vagrant ssh -c "systemctl status myservice"` — check it works
+6. `vagrant ssh -c "sudo journalctl -u myservice --no-pager"` — check logs
+7. `vagrant destroy -f` — clean slate
 
-Result: Docker image built and tested inside VM with its own Docker daemon.
+Result: Service tested with real systemd, real journald. No risk to host init system.
+
+### Example 3: Docker daemon configuration and privileged port binding
+
+User says: "I need to test a Docker compose setup that binds port 80"
+
+Actions:
+1. Create Vagrantfile with Docker CE provisioned
+2. `vagrant up`
+3. `vagrant ssh -c "cd /project && docker compose up -d"`
+4. `vagrant ssh -c "curl -sf http://localhost"` — test from inside VM
+5. `vagrant ssh -c "docker compose logs"` — check output
+6. `vagrant ssh -c "docker compose down"` — cleanup
+7. `vagrant destroy -f`
+
+Result: Full Docker compose stack running with privileged ports — impossible without sudo on the host.
 
 ## Troubleshooting
 
