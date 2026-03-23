@@ -12,7 +12,7 @@ compatibility: >-
   Requires vagrant binary and at least one provider: Parallels (Mac Apple
   Silicon), libvirt (Linux), or VirtualBox (cross-platform). Designed for
   terminal-based AI agents and interactive developer use.
-allowed-tools: "Bash(vagrant:*) Bash(make:*) Read Write"
+allowed-tools: "Bash(vagrant:*) Bash(bats:*) Read Write"
 metadata:
   author: daax-dev
   version: "0.1.0"
@@ -256,6 +256,27 @@ vagrant ssh -c "sudo iptables -A FORWARD -s 172.16.0.0/24 -j DROP"
 vagrant ssh -c "sudo iptables -L -n -v"
 ```
 
+### Pattern: bats End-to-End Tests
+
+Run a [bats-core](https://github.com/bats-core/bats-core) test suite against a live VM as proof that the system under test works. The VM must be up before running bats.
+
+```bash
+vagrant up
+bats test/e2e.bats      # run tests, output is the proof
+vagrant destroy -f      # tear down after
+```
+
+Capture output to show the user:
+
+```bash
+vagrant up
+bats test/e2e.bats 2>&1 | tee /tmp/bats-results.txt
+vagrant destroy -f
+cat /tmp/bats-results.txt
+```
+
+bats exits non-zero on any failure — treat that as a test run failure.
+
 ### Pattern: Full Reprovision (Nuclear Option)
 
 ```bash
@@ -336,6 +357,60 @@ Actions:
 7. `vagrant destroy -f`
 
 Result: Full Docker compose stack running with privileged ports — impossible without sudo on the host.
+
+### Example 4: Run the built-in e2e examples
+
+Three working examples live under `examples/` in this skill's directory. All follow the same pattern — boot, test, tear down:
+
+```bash
+cd examples/<name>
+vagrant up [--provider=<provider>]
+bats test/e2e.bats 2>&1 | tee /tmp/e2e-results.txt
+cat /tmp/e2e-results.txt
+vagrant destroy -f
+```
+
+#### `examples/nginx-hardened/` — Linux / libvirt (16 tests)
+
+Deploys nginx + hardened iptables (INPUT DROP, allow SSH + HTTP only).
+**Why VM:** `iptables -F INPUT; iptables -P INPUT DROP` on the host locks you out.
+
+```bash
+cd examples/nginx-hardened
+vagrant up
+bats test/e2e.bats 2>&1 | tee /tmp/e2e-results.txt
+vagrant destroy -f
+```
+
+#### `examples/mac-docker-compose/` — Mac Apple Silicon / Parallels (14 tests)
+
+Runs a Docker Compose stack: nginx on port 80 proxying a Python JSON API.
+**Why VM:** Docker Desktop requires a commercial license; Docker CE in a VM has none of its restrictions.
+
+```bash
+cd examples/mac-docker-compose
+vagrant up --provider=parallels
+bats test/e2e.bats 2>&1 | tee /tmp/e2e-results.txt
+vagrant destroy -f
+```
+
+#### `examples/windows-systemd-service/` — Windows WSL2 / VirtualBox (20 tests)
+
+Deploys a Python HTTP server as a real systemd unit, running as a dedicated system user.
+**Why VM:** WSL2 does not run real systemd — unit files cannot be tested without a real Linux init.
+
+WSL2 pre-flight:
+```bash
+export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
+export PATH="$PATH:/mnt/c/Program Files/Oracle/VirtualBox"
+```
+
+```bash
+cd examples/windows-systemd-service
+vagrant up --provider=virtualbox
+bats test/e2e.bats 2>&1 | tee /tmp/e2e-results.txt
+vagrant destroy -f
+```
 
 ## Troubleshooting
 

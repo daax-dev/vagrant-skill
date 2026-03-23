@@ -1,0 +1,67 @@
+# -*- mode: ruby -*-
+# windows-systemd-service example — vagrant-skill
+#
+# Demonstrates why you need a VM on Windows/WSL2:
+#   - WSL2 does not run real systemd by default; even with systemd=true in
+#     /etc/wsl.conf it is a shim — unit file loading and journald differ
+#   - A VirtualBox VM gives you a real Ubuntu 24.04 systemd (PID 1) to test
+#     unit files before deploying them to production Linux servers
+#
+# Stack:
+#   - A 'demo-http' systemd service running a Python HTTP server on port 8000
+#   - Python stdlib only — no pip, no external deps
+#   - Runs as a dedicated 'demo' system user (not root)
+#
+# Usage:
+#   vagrant up                                       # boot + provision
+#   vagrant ssh -c "systemctl status demo-http"      # check the service
+#   vagrant ssh -c "curl http://localhost:8000"       # hit the server
+#   vagrant ssh -c "journalctl -u demo-http --no-pager"  # view logs
+#   vagrant destroy -f                               # wipe and start over
+#
+# Provider priority: VirtualBox (Windows/WSL2 — primary) > Parallels > libvirt
+#
+# WSL2 setup (before vagrant up):
+#   export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
+#   export PATH="$PATH:/mnt/c/Program Files/Oracle/VirtualBox"
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "bento/ubuntu-24.04"
+  config.vm.box_check_update = false
+  config.vm.hostname = "windows-systemd"
+  config.vm.boot_timeout = 300
+
+  # ─── Provider: VirtualBox (Windows/WSL2 — primary) ──────────────────────────
+  # VirtualBox must be installed on the Windows host (not inside WSL2).
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 1024
+    vb.cpus   = 2
+    vb.name   = "windows-systemd-service"
+  end
+
+  # ─── Provider: Parallels (Mac Apple Silicon — fallback) ─────────────────────
+  config.vm.provider "parallels" do |prl|
+    prl.memory = 1024
+    prl.cpus   = 2
+    prl.name   = "windows-systemd-service"
+    prl.update_guest_tools = true
+  end
+
+  # ─── Provider: libvirt (Linux — fallback) ───────────────────────────────────
+  config.vm.provider "libvirt" do |lv|
+    lv.memory = 1024
+    lv.cpus   = 2
+    lv.default_prefix = "windows_systemd_"
+  end
+
+  # Disable the default /vagrant share.
+  # Under WSL2 + VirtualBox, Vagrant tries to mount /vagrant using vboxsf
+  # (VirtualBox shared folders). This requires the VirtualBox kernel module
+  # inside the guest, but VirtualBox runs on the Windows kernel — not WSL2.
+  # The result is a non-fatal but confusing mount error on first boot.
+  # This example is self-contained so no sync is needed.
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  # ─── Provision ──────────────────────────────────────────────────────────────
+  config.vm.provision "shell", path: "scripts/provision.sh", privileged: true
+end

@@ -1,0 +1,39 @@
+# -*- mode: ruby -*-
+# nginx-hardened example — vagrant-skill
+#
+# Demonstrates why you need a VM:
+#   - iptables -F INPUT on your host could kill your own SSH session
+#   - setting a DROP default policy without the right rules locks you out
+#   - in the VM you can iterate freely and destroy without consequence
+#
+# Usage:
+#   vagrant up                     # boot + provision (installs nginx + firewall)
+#   vagrant ssh                    # interactive shell
+#   vagrant ssh -c "iptables -L"   # run one-off commands
+#   vagrant destroy -f             # wipe and start over
+
+EXAMPLE_DIR = File.dirname(File.expand_path(__FILE__))
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "bento/ubuntu-24.04"
+  config.vm.box_check_update = false
+  config.vm.hostname = "nginx-hardened"
+  config.vm.boot_timeout = 300
+
+  # ─── Provider: libvirt (Linux — preferred) ──────────────────────────────────
+  config.vm.provider "libvirt" do |lv|
+    lv.memory = 1024
+    lv.cpus   = 2
+    lv.default_prefix = "nginx_hardened_"
+  end
+
+  # ─── Provider: VirtualBox (fallback) ────────────────────────────────────────
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 1024
+    vb.cpus   = 2
+    vb.name   = "nginx-hardened"
+  end
+
+  # ─── Provision ──────────────────────────────────────────────────────────────
+  config.vm.provision "shell", path: "scripts/provision.sh", privileged: true
+end

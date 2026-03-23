@@ -43,6 +43,78 @@ vagrant rsync
 vagrant destroy -f
 ```
 
+## Examples
+
+Three self-contained examples, one per platform. Each has a `Vagrantfile`, a `scripts/provision.sh`, and a `test/e2e.bats` suite. Run them the same way:
+
+```bash
+vagrant up
+bats test/e2e.bats
+vagrant destroy -f
+```
+
+---
+
+### Linux — nginx-hardened (`examples/nginx-hardened/`)
+
+Deploys nginx with a hardened iptables firewall (INPUT DROP by default, allow SSH + HTTP only). **16 bats tests.**
+
+**Why it needs a VM:** `iptables -F INPUT` + `-P INPUT DROP` on the host locks you out of your own SSH session. Provider: **libvirt**.
+
+```bash
+cd examples/nginx-hardened
+vagrant up
+bats test/e2e.bats
+vagrant destroy -f
+```
+
+**Ask the LLM:**
+> `/vagrant` Run the nginx-hardened example in `examples/nginx-hardened/`, show me the full bats output, then destroy the VM.
+
+---
+
+### Mac — docker-compose (`examples/mac-docker-compose/`)
+
+Runs a Docker Compose stack: nginx on port 80 proxying a Python JSON API on port 8000 (internal only). **14 bats tests.**
+
+**Why it needs a VM:** Docker Desktop requires a commercial license and proxies port bindings through a hyperkit shim. Docker CE in a Parallels VM has no restrictions. Provider: **Parallels** (Apple Silicon).
+
+```bash
+cd examples/mac-docker-compose
+vagrant up --provider=parallels
+bats test/e2e.bats
+vagrant destroy -f
+```
+
+**Ask the LLM:**
+> `/vagrant` Run the mac-docker-compose example in `examples/mac-docker-compose/`, show me the bats results proving the stack is up, then tear it down.
+
+---
+
+### Windows — systemd-service (`examples/windows-systemd-service/`)
+
+Deploys a Python HTTP server as a real systemd unit file, running as a dedicated `demo` system user. **20 bats tests** including service restart after SIGKILL.
+
+**Why it needs a VM:** WSL2 does not run real systemd — you can't test unit files without a proper Linux VM. Provider: **VirtualBox**.
+
+WSL2 setup before `vagrant up`:
+```bash
+export VAGRANT_WSL_ENABLE_WINDOWS_ACCESS="1"
+export PATH="$PATH:/mnt/c/Program Files/Oracle/VirtualBox"
+```
+
+```bash
+cd examples/windows-systemd-service
+vagrant up --provider=virtualbox
+bats test/e2e.bats
+vagrant destroy -f
+```
+
+**Ask the LLM:**
+> `/vagrant` Run the windows-systemd-service example in `examples/windows-systemd-service/`, show me the bats output and journald logs, then destroy the VM.
+
+---
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -215,15 +287,19 @@ make test-all
 vagrant-skill/
 ├── Vagrantfile                    # Multi-provider (Parallels, libvirt, VirtualBox)
 ├── SKILL.md                       # Agent Skills standard skill definition
-├── .claude/skills/vagrant/        # Claude Code skill symlink
 ├── scripts/
 │   ├── setup.sh                   # Provisioner: system deps, Docker, Go, mage, KVM
 │   └── verify.sh                  # Validation suite (11 checks)
-├── references/                    # Progressive disclosure (Level 3)
+├── examples/
+│   ├── nginx-hardened/            # Linux/libvirt:    nginx + iptables firewall (16 tests)
+│   ├── mac-docker-compose/        # Mac/Parallels:    Docker Compose stack (14 tests)
+│   └── windows-systemd-service/   # Windows/VirtualBox: systemd unit file (20 tests)
+│       (each has Vagrantfile, scripts/provision.sh, test/e2e.bats)
+├── references/                    # Progressive disclosure
 │   ├── platform-setup.md          # Detailed provider installation
 │   └── vm-contents.md             # VM filesystem and software reference
 ├── docs/                          # Project documentation
-├── test/                          # bats-core tests (58 tests)
+├── test/                          # bats-core tests (unit + integration)
 ├── Makefile                       # lint, test, test-integration, up, destroy
 ├── README.md
 ├── CLAUDE.md

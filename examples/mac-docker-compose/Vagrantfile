@@ -1,0 +1,54 @@
+# -*- mode: ruby -*-
+# mac-docker-compose example — vagrant-skill
+#
+# Demonstrates why you need a VM on Mac Apple Silicon:
+#   - Docker Desktop requires a paid license for teams >250 employees or $10M revenue
+#   - Docker CE in a VM has no such restrictions
+#   - Port 80/443 binding, /proc access, kernel-level networking — all unrestricted
+#
+# Stack:
+#   - nginx on port 80 (reverse proxy)
+#   - Python JSON API on port 8000 (internal only — not published to host)
+#
+# Usage:
+#   vagrant up                               # boot + provision (Parallels preferred on Mac)
+#   vagrant ssh -c "docker compose ps"       # inspect the running stack
+#   vagrant ssh -c "curl http://localhost/api/"  # hit the API via the proxy
+#   vagrant destroy -f                       # wipe and start over
+#
+# Provider priority: Parallels (Mac Apple Silicon) > libvirt (Linux) > VirtualBox
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "bento/ubuntu-24.04"
+  config.vm.box_check_update = false
+  config.vm.hostname = "mac-docker-compose"
+  config.vm.boot_timeout = 300
+
+  # ─── Provider: Parallels (Mac Apple Silicon — primary) ──────────────────────
+  # Install: brew install --cask parallels && vagrant plugin install vagrant-parallels
+  config.vm.provider "parallels" do |prl|
+    prl.memory = 2048
+    prl.cpus   = 2
+    prl.name   = "mac-docker-compose"
+    prl.update_guest_tools = true
+  end
+
+  # ─── Provider: libvirt (Linux — fallback) ───────────────────────────────────
+  config.vm.provider "libvirt" do |lv|
+    lv.memory = 2048
+    lv.cpus   = 2
+    lv.default_prefix = "mac_docker_compose_"
+  end
+
+  # ─── Provider: VirtualBox (last resort) ─────────────────────────────────────
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 2048
+    vb.cpus   = 2
+    vb.name   = "mac-docker-compose"
+  end
+
+  # No synced_folder — example is fully self-contained; provision.sh writes all files inline.
+
+  # ─── Provision ──────────────────────────────────────────────────────────────
+  config.vm.provision "shell", path: "scripts/provision.sh", privileged: true
+end
