@@ -35,7 +35,7 @@ EXAMPLE_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   cd "$EXAMPLE_DIR"
   run vagrant ssh -c "curl -so /dev/null -w '%{http_code}' http://localhost"
   [ "$status" -eq 0 ]
-  [[ "$output" == "200" ]]
+  [[ "$output" == *"200"* ]]
 }
 
 @test "nginx serves the default welcome page" {
@@ -83,7 +83,7 @@ EXAMPLE_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 
 @test "loopback interface is explicitly allowed" {
   cd "$EXAMPLE_DIR"
-  run vagrant ssh -c "sudo iptables -L INPUT -n | grep -i 'lo\|loopback\|127.0.0.1'"
+  run vagrant ssh -c "sudo iptables -S INPUT | grep -q '\-i lo'"
   [ "$status" -eq 0 ]
 }
 
@@ -105,14 +105,14 @@ EXAMPLE_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 
 @test "saved rules contain the DROP policy" {
   cd "$EXAMPLE_DIR"
-  run vagrant ssh -c "grep -q ':INPUT DROP' /etc/iptables/rules.v4 && echo found"
+  run vagrant ssh -c "sudo grep -q ':INPUT DROP' /etc/iptables/rules.v4 && echo found"
   [ "$status" -eq 0 ]
   [[ "$output" == *"found"* ]]
 }
 
 @test "saved rules contain the SSH allow rule" {
   cd "$EXAMPLE_DIR"
-  run vagrant ssh -c "grep -q 'dport 22' /etc/iptables/rules.v4 && echo found"
+  run vagrant ssh -c "sudo grep -q 'dport 22' /etc/iptables/rules.v4 && echo found"
   [ "$status" -eq 0 ]
   [[ "$output" == *"found"* ]]
 }
