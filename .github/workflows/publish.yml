@@ -53,6 +53,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Validate Agent Skills spec
         if: steps.check.outputs.skip == 'false'
@@ -71,8 +72,9 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip == 'false'
-        continue-on-error: true
         run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ""
 
       - name: Create GitHub release
         if: steps.check.outputs.skip == 'false'
