@@ -14,7 +14,7 @@ compatibility: >-
   terminal-based AI agents and interactive developer use.
 allowed-tools: "Bash(vagrant:*) Bash(bats:*) Read Write"
 metadata:
-  author: daax-dev
+  author: jpoley
   version: "0.1.0"
   category: infrastructure
   tags: [vm, sandbox, testing, docker, devops, isolation, kvm]
