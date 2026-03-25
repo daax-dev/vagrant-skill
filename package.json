@@ -1,6 +1,6 @@
 {
   "name": "@daax-dev/vagrant-skill",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Disposable VMs for safe testing — Agent Skills standard skill for Claude Code, OpenClaw, and 30+ AI agents",
   "author": "JP Workspace",
   "license": "Apache-2.0",
