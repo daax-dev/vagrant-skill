@@ -58,12 +58,10 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Sync version from release tag
+      - name: Publish to ClawHub
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
-
-      - name: Publish to ClawHub
-        run: npx --yes clawhub@latest publish --scope @jpoley
+          npx --yes clawhub@latest login --token "$CLAWHUB_TOKEN" --no-browser
+          npx --yes clawhub@latest publish . --version "$VERSION"
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
