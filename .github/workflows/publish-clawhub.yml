@@ -64,6 +64,6 @@ jobs:
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Publish to ClawHub
-        run: npx --yes clawhub@latest publish --scope @jpoley
+        run: npx --yes clawhub@latest publish .
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
