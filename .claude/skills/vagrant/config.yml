@@ -1,0 +1,246 @@
+# vagrant skill — Claude Code configuration
+# Controls when and how Claude Code invokes /vagrant.
+#
+# This file lives alongside SKILL.md in .claude/skills/vagrant/
+# and is the authoritative source for trigger logic, provider selection,
+# and behavior policy for the Claude Code skill specifically.
+
+skill:
+  name: vagrant
+  command: /vagrant
+  version: "0.7.4"
+  package: "@daax-dev/vagrant-skill"
+
+# ─── Triggers ────────────────────────────────────────────────────────────────
+# Claude Code reads this section to decide when to invoke /vagrant
+# automatically, without the user typing /vagrant explicitly.
+
+triggers:
+
+  # Explicit invocations always activate the skill.
+  explicit:
+    - /vagrant
+    - /daax-dev:vagrant
+
+  # User phrases that should activate this skill automatically.
+  keywords:
+    - "spin up a VM"
+    - "spin up a virtual machine"
+    - "spin up a box"
+    - "start a VM"
+    - "boot a VM"
+    - "create a VM"
+    - "vagrant up"
+    - "test in isolation"
+    - "test in a sandbox"
+    - "run in a sandbox"
+    - "disposable environment"
+    - "clean environment"
+    - "fresh environment"
+    - "I need sudo"
+    - "I need root"
+    - "run with sudo"
+    - "run as root"
+    - "I need Docker"
+    - "test Docker"
+    - "test firewall"
+    - "test iptables"
+    - "test systemd"
+    - "test a service"
+    - "without affecting the host"
+    - "don't touch my host"
+    - "don't modify my system"
+    - "network isolation"
+    - "nested KVM"
+    - "set up a dev environment"
+    - "dev environment in a box"
+
+  # Situation-based activation — even if the user doesn't say the keywords,
+  # these conditions mean /vagrant is the right call.
+  scenarios:
+    - id: needs_root
+      description: Task requires privileged access that would risk the host
+      activate_when:
+        - Task requires iptables, nftables, or firewall rule changes
+        - Task requires binding a privileged port (< 1024) without Docker Desktop
+        - Task requires writing systemd unit files or running systemctl
+        - Task requires /dev/kvm or nested virtualization
+        - Task requires writing to /etc/, /usr/local/, or other system paths
+        - Task requires running a background daemon or system service
+
+    - id: needs_docker
+      description: Task needs Docker CE and host doesn't have it running
+      activate_when:
+        - Project has a Dockerfile or docker-compose.yml
+        - User wants to build a container image
+        - User wants privileged ports in a container
+        - Host has no running docker daemon
+
+    - id: needs_clean_slate
+      description: Task needs a throw-away environment with no host side effects
+      activate_when:
+        - User says "from scratch", "blank slate", "start fresh", "clean install"
+        - Testing an installer or bootstrap script
+        - Running untrusted or third-party scripts
+        - Reproducing a bug in a controlled environment
+
+    - id: needs_network_test
+      description: Task involves network stack manipulation or service testing
+      activate_when:
+        - Modifying routing tables or DNS configuration
+        - Testing a network service (HTTP, gRPC, DNS, MQTT)
+        - Validating firewall rules before production deployment
+
+    - id: vagrantfile_present
+      description: Project already has a Vagrantfile — use the VM automatically
+      activate_when:
+        - A Vagrantfile exists in the project root or a parent directory
+        - User says "use the VM", "in the VM", or "inside the box"
+
+# ─── Exclusions ──────────────────────────────────────────────────────────────
+# Never activate in these conditions, even if keywords match.
+
+exclusions:
+  never:
+    - vagrant binary is not installed on the host
+    - No provider available (VBoxManage, virsh, or prlctl not found)
+    - Running inside a CI environment (GITHUB_ACTIONS=true, CI=true, GITLAB_CI=true)
+    - Running inside an existing VM or container that cannot nest VMs
+    - User explicitly says "no VM", "skip the VM", "just run it here", "on the host"
+    - Task is read-only: code review, explanation, search, documentation
+    - Task is a simple file edit with no execution required
+
+  warn_before_activating:
+    - Host has less than 4 GB free RAM
+    - Host disk has less than 20 GB free
+    - A VM is already running in this directory (vagrant status shows "running")
+
+# ─── Provider selection ───────────────────────────────────────────────────────
+
+providers:
+  # Try in this order — first detected provider wins.
+  detection_order: [parallels, libvirt, virtualbox]
+
+  detect:
+    parallels:  "command -v prlctl"
+    libvirt:    "vagrant plugin list | grep -q vagrant-libvirt"
+    virtualbox: "command -v VBoxManage"
+
+  platforms:
+    mac_apple_silicon:
+      use: parallels
+      reason: VirtualBox on Apple Silicon is experimental and unreliable
+
+    mac_intel:
+      use: virtualbox
+
+    linux:
+      use: libvirt
+      reason: Native KVM — best performance, supports nested VMs
+
+    linux_inside_vm:
+      use: virtualbox
+      note: libvirt may work if host VM has nested virt enabled
+
+    wsl2:
+      use: virtualbox
+      require_env:
+        VAGRANT_WSL_ENABLE_WINDOWS_ACCESS: "1"
+      require_path: "/mnt/c/Program Files/Oracle/VirtualBox"
+      note: VirtualBox must be installed on the Windows host, not inside WSL2
+
+# ─── VM defaults ─────────────────────────────────────────────────────────────
+
+defaults:
+  box: "bento/ubuntu-24.04"
+  cpus: 4           # override: VM_CPUS=8 vagrant up
+  memory: 4096      # override: VM_MEMORY=8192 vagrant up (MB)
+  sync:
+    host: "."
+    guest: "/project"
+    type: rsync
+    exclude: [".git/", "node_modules/", "vendor/", ".vagrant/", "bin/", "dist/", "build/"]
+
+# ─── Provisioning ─────────────────────────────────────────────────────────────
+# Claude Code MUST inspect the project before writing the Vagrantfile provisioner.
+
+provisioning:
+  always_install: [build-essential, curl, git, jq, ca-certificates, gnupg, docker-ce]
+
+  # Read these project files to decide what else to install.
+  detect_from_files:
+    go.mod:           { install: go,         version: "1.24.3" }
+    package.json:     { install: nodejs,     version: "22" }
+    requirements.txt: { install: python3 }
+    pyproject.toml:   { install: python3 }
+    Cargo.toml:       { install: rust }
+    "*.tf":           { install: terraform }
+
+  # Install KVM tooling only when the host supports nested virt.
+  conditional:
+    - when: "/dev/kvm exists on host"
+      install: [qemu-kvm, libvirt-daemon-system, libvirt-clients]
+
+  rules:
+    - All provisioner scripts must start with "set -euo pipefail"
+    - All provisioning must be idempotent (safe to re-run with vagrant provision)
+    - Check before installing — use "if ! command -v X" guards
+    - Use DEBIAN_FRONTEND=noninteractive for all apt-get calls
+    - Never leave commented-out placeholder blocks in the final Vagrantfile
+
+# ─── Behavior ─────────────────────────────────────────────────────────────────
+
+behavior:
+  vagrantfile:
+    create_if_missing: true
+    location: project_root
+    must_customize_provisioner: true   # Never ship the generic template unchanged
+    commit_to_git: true                # Vagrantfile belongs in version control
+
+  gitignore:
+    add_entry: ".vagrant/"
+    check_before_adding: true          # Don't duplicate if already present
+
+  execution:
+    all_privileged_ops_inside_vm: true
+    never_use_host_sudo: true
+    rsync_before_retest: true          # Always vagrant rsync after host code changes
+
+  workflow:
+    - detect_provider
+    - inspect_project_files
+    - write_vagrantfile
+    - update_gitignore
+    - vagrant_up
+    - run_all_work_via_vagrant_ssh_c
+    - vagrant_destroy                  # Default: destroy when done
+
+  teardown:
+    default: destroy
+    keep_if_user_says: ["keep it running", "leave the VM up", "don't destroy", "I'll destroy it later"]
+
+# ─── Allowed tools ────────────────────────────────────────────────────────────
+# Must match the allowed-tools frontmatter in SKILL.md.
+
+allowed_tools:
+  - "Bash(vagrant *)"
+  - "Bash(bats *)"
+  - "Bash(rsync *)"
+  - "Bash(ssh *)"
+  - Read
+  - Write
+
+# ─── Requirements ─────────────────────────────────────────────────────────────
+
+requirements:
+  all:
+    - binary: vagrant
+      missing: "Install vagrant: brew install --cask vagrant (Mac) | apt-get install vagrant (Linux)"
+
+  any:
+    - binary: VBoxManage
+      install: "brew install --cask virtualbox (Mac) | apt-get install virtualbox (Linux)"
+    - binary: virsh
+      install: "apt-get install qemu-kvm libvirt-daemon-system && vagrant plugin install vagrant-libvirt"
+    - binary: prlctl
+      install: "Install Parallels Desktop, then: vagrant plugin install vagrant-parallels"
