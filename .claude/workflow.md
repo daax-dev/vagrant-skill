@@ -45,7 +45,7 @@ Identify the source before starting. If the same task appears in multiple system
 ## Definition of Done
 A task is done only when:
 - [ ] Lint and unit tests pass: `make lint && make test` (matches CI: shellcheck + `ruby -c` + bats unit suites). When a Vagrant provider is available and VM behavior changed, also run `make test-integration` (or `make test-all`).
-- [ ] Skill changes validate against the Agent Skills standard. The validator requires the skill directory to be named `vagrant`, so run the CI flow (the `validate-skill` job) rather than invoking it from the `vagrant-skill` checkout root: `mkdir -p /tmp/vagrant && cp -r ./* ./.* /tmp/vagrant/ 2>/dev/null; npx --yes skills-ref validate /tmp/vagrant`.
+- [ ] Skill changes validate against the Agent Skills standard. The validator requires the skill directory to be named `vagrant`, so run the CI flow (the `validate-skill` job) rather than invoking it from the `vagrant-skill` checkout root: `mkdir -p /tmp/vagrant && cp -r ./* ./.* /tmp/vagrant/ 2>/dev/null || true; npx --yes skills-ref validate /tmp/vagrant`.
 - [ ] PR opened with problem statement, approach, and test evidence.
 - [ ] Non-trivial decisions logged in `.logs/decisions/` per `.claude/history.md`.
 - [ ] Validation pass by a separate model — cross-provider (Claude ↔ Codex) where possible — recorded in the PR description as `Validation:` producer model + validator model + verdict (note if cross-provider was not possible).
