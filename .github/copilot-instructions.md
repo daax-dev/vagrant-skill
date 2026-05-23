@@ -28,7 +28,7 @@ Purpose: A general-purpose disposable-VM Agent Skill (`vagrant`) providing Ubunt
 ---
 
 ## Stack
-- Skill format: Agent Skills standard (`SKILL.md` with YAML frontmatter); validated via `npx skills-ref validate`.
+- Skill format: Agent Skills standard (`SKILL.md` with YAML frontmatter); validated by the `validate-skill` CI job. The validator requires the skill directory to be named `vagrant`, so CI copies the checkout to `/tmp/vagrant` first: `mkdir -p /tmp/vagrant && cp -r ./* ./.* /tmp/vagrant/ 2>/dev/null; npx --yes skills-ref validate /tmp/vagrant`.
 - VM tooling: Vagrant CLI with a provider (Parallels / libvirt / VirtualBox). Base box `bento/ubuntu-24.04`.
 - Languages: Ruby (Vagrantfile, syntax-checked with `ruby -c`; Ruby 3.3 in CI) and Bash (`scripts/*.sh`, shellcheck-linted).
 - Package: npm (`@daax-dev/vagrant-skill`), Node `>=22.14.0`; published to npm + ClawHub.
@@ -62,7 +62,7 @@ Purpose: A general-purpose disposable-VM Agent Skill (`vagrant`) providing Ubunt
 ## Definition of Done
 A task is done only when:
 - `make lint && make test` pass (matching CI). Run `make test-integration` / `make test-all` locally when a provider is available and VM behavior changed.
-- Skill changes validate (`npx --yes skills-ref validate`).
+- Skill changes validate via the CI flow (validator requires the dir named `vagrant`): `mkdir -p /tmp/vagrant && cp -r ./* ./.* /tmp/vagrant/ 2>/dev/null; npx --yes skills-ref validate /tmp/vagrant`.
 - PR opened with problem statement, approach, and test evidence.
 - No `[FILL IN]` placeholders left in affected files.
 - Decisions logged in `.logs/decisions/` if a non-trivial choice was made.

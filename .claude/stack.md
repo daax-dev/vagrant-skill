@@ -11,7 +11,7 @@ deliberately. The "runtime" is the contributor toolchain plus the VM the skill p
 
 ## Skill Format
 - Agent Skills standard: `SKILL.md` with YAML frontmatter (`name`, `description`, `license`, `compatibility`, `allowed-tools`, `metadata`).
-- Validated with `npx --yes skills-ref validate` (CI job `validate-skill`; validator requires the skill dir to be named `vagrant`).
+- Validated by the `validate-skill` CI job. The validator requires the skill dir to be named `vagrant`, so CI copies the checkout to `/tmp/vagrant` before validating: `mkdir -p /tmp/vagrant && cp -r ./* ./.* /tmp/vagrant/ 2>/dev/null; npx --yes skills-ref validate /tmp/vagrant`.
 - Consumed as a Claude Code skill (`/vagrant`) and an OpenClaw skill (`metadata.openclaw` declares required bins).
 
 ## Contributor Toolchain

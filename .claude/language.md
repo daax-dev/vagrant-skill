@@ -35,7 +35,7 @@ For each active language, this file records:
 ---
 
 ## Skill Definition (Markdown + YAML frontmatter)
-- `SKILL.md` is validated against the Agent Skills standard via `npx --yes skills-ref validate` (CI `validate-skill` job).
+- `SKILL.md` is validated against the Agent Skills standard. The validator requires the skill directory to be named `vagrant`, so the `validate-skill` CI job copies the checkout to `/tmp/vagrant` first: `mkdir -p /tmp/vagrant && cp -r ./* ./.* /tmp/vagrant/ 2>/dev/null; npx --yes skills-ref validate /tmp/vagrant`. Running it directly from the `vagrant-skill` checkout fails on the directory-name check.
 - `test/skill.bats` asserts frontmatter fields and structure.
 - Keep `SKILL.md`, the `Vagrantfile`, and the bats suites in sync when behavior changes.
 
